@@ -1,41 +1,27 @@
 /*
-  VPC: dedicated per environment/region.
+  VPC dedicada por entorno/región.
+  IMPORTANTE: digitalocean_vpc NO soporta 'tags'.
 */
 resource "digitalocean_vpc" "vpc" {
   name     = "${var.cluster_name}-vpc"
   region   = var.region
   ip_range = var.vpc_cidr
-
-  #  tags = var.tags
 }
 
 /*
-  Discover available Kubernetes versions.
-  We'll select either an exact version (if provided) or the latest stable
-  patch that matches the minor prefix.
+  Selección de versión DOKS:
+  - Si kubernetes_version == "": usar latest patch del minor (version_prefix).
+  - Si kubernetes_version != "": usar pin exacto.
 */
-data "digitalocean_kubernetes_versions" "available" {}
+data "digitalocean_kubernetes_versions" "minor" {
+  version_prefix = "${var.kubernetes_minor_prefix}."
+}
 
 locals {
-  stable_versions = [
-    for v in data.digitalocean_kubernetes_versions.available.valid_versions :
-    v if v.stable == true
-  ]
-
-  stable_version_strings = [for v in local.stable_versions : v.slug]
-
-  minor_pattern = var.kubernetes_minor_prefix
-
-  minor_versions = [
-    for s in local.stable_version_strings :
-    s if can(regex(local.minor_pattern, s))
-  ]
-
   effective_k8s_version = (
-    var.kubernetes_version != "" ? var.kubernetes_version :
-    length(local.minor_versions) > 0 ? local.minor_versions[0] :
-    length(local.stable_version_strings) > 0 ? local.stable_version_strings[0] :
-    ""
+    var.kubernetes_version != "" ?
+    var.kubernetes_version :
+    data.digitalocean_kubernetes_versions.minor.latest_version
   )
 }
 
@@ -48,6 +34,7 @@ resource "digitalocean_kubernetes_cluster" "doks" {
   version  = local.effective_k8s_version
   vpc_uuid = digitalocean_vpc.vpc.id
 
+  # Upgrades
   surge_upgrade = true
   auto_upgrade  = false
 
@@ -56,6 +43,7 @@ resource "digitalocean_kubernetes_cluster" "doks" {
     start_time = var.maintenance_start_time_utc
   }
 
+  # Node pool “sistema”
   node_pool {
     name       = "sysnp"
     size       = var.node_size
@@ -73,17 +61,19 @@ resource "digitalocean_kubernetes_cluster" "doks" {
 }
 
 /*
-  Optional: DigitalOcean firewall to restrict inbound traffic to nodes.
+  (Opcional) Firewall por tags — deja enable_firewall = false para el MVP.
+  Si lo activas, limita orígenes en 'allowed_source_addresses'.
 */
 resource "digitalocean_firewall" "nodes" {
   count = var.enable_firewall ? 1 : 0
 
   name = "${var.cluster_name}-nodes-fw"
 
-  droplet_ids = [
-    for np in digitalocean_kubernetes_cluster.doks.node_pool :
-    np.nodes[*].droplet_id
-  ][0]
+  # Asociar por tags (los workers de DOKS llevan tags 'k8s' y 'k8s:worker')
+  tags = [
+    "k8s",
+    "k8s:worker"
+  ]
 
   inbound_rule {
     protocol         = "tcp"
@@ -114,6 +104,5 @@ resource "digitalocean_firewall" "nodes" {
     port_range            = "1-65535"
     destination_addresses = ["0.0.0.0/0", "::/0"]
   }
-
-  tags = var.tags
 }
+
