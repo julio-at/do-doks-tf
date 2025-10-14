@@ -1,0 +1,24 @@
+# Example values — copy to terraform.tfvars and adjust
+
+region                   = "nyc3"
+vpc_cidr                 = "10.10.0.0/16"
+
+cluster_name             = "doks-demo"
+
+# Option A: keep empty to use latest stable patch of the minor below
+kubernetes_version       = ""
+
+# Option B: define minor prefix (used only when kubernetes_version == "")
+kubernetes_minor_prefix  = "1.30"
+
+node_size                = "s-2vcpu-4gb"
+node_count               = 3
+
+enable_autoscale         = false
+min_nodes                = 2
+max_nodes                = 6
+
+enable_firewall          = false
+allowed_source_addresses = ["0.0.0.0/0"]
+
+tags = ["project:doks-demo", "env:lab", "owner:julio"]
