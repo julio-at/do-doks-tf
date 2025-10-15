@@ -9,7 +9,7 @@ This repository provisions a **DigitalOcean VPC** and a **DOKS cluster** using *
 ## 1) Clone this repo
 
 ```bash
-git clone <YOUR_REPO_URL>.git
+git clone https://github.com/julio-at/do-doks-tf.git
 cd do-doks-tf
 ```
 
